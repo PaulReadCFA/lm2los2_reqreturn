@@ -78,7 +78,7 @@ const CustomLabel = (props) => {
       fontSize="11"
       fontWeight="bold"
     >
-      ${Math.abs(value).toFixed(2)}
+      {isNegative ? '-' : ''}${Math.abs(value).toFixed(2)}
     </text>
   );
 };
@@ -215,9 +215,19 @@ export default function App() {
               </div>
 
               {/* Cash Flow Chart */}
-              <div className="h-96">
+              <div className="h-96 relative">
                 <div className="text-center text-sm text-gray-600 mb-2 font-medium">
                   Equity Cash Flows (in US$) & Resulting Implied Required Return (Only the first 10 years are shown)
+                </div>
+                {/* IRR Value Label positioned relative to chart */}
+                <div 
+                  className="absolute right-6 bg-blue-100 text-blue-600 px-2 py-1 rounded text-sm font-semibold z-10"
+                  style={{
+                    top: `${100 - (model.requiredReturn / (Math.ceil(model.requiredReturn * 1.2))) * 80}%`,
+                    transform: 'translateY(-50%)'
+                  }}
+                >
+                  {model.requiredReturn.toFixed(2)}%
                 </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
@@ -237,9 +247,11 @@ export default function App() {
                     <YAxis 
                       yAxisId="right"
                       orientation="right"
-                      label={{ value: 'IRR (%)', angle: 90, position: 'insideRight' }}
+                      label={{ value: 'IRR (%)', angle: 90, position: 'insideRight', style: { fill: '#2563eb' } }}
                       tickFormatter={(value) => `${value.toFixed(1)}`}
                       domain={[0, Math.ceil(model.requiredReturn * 1.2)]}
+                      tick={{ fill: '#2563eb' }}
+                      axisLine={{ stroke: '#2563eb' }}
                     />
                     <Tooltip 
                       formatter={(value, name) => {
