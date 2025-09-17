@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -10,64 +10,72 @@ import {
   Tooltip,
 } from "recharts";
 
+// Shared Components
 function Card({ title, children, className = "" }) {
   return (
     <div className={`bg-white rounded-2xl shadow-md p-5 border border-gray-100 ${className}`}>
-      <h2 className="font-serif text-xl text-slate-800 mb-3">{title}</h2>
+      <h1 className="font-serif text-2xl text-slate-800 mb-3">{title}</h1>
       <div className="font-sans text-sm text-black/80">{children}</div>
     </div>
   );
 }
 
-function calculateGordonGrowthModel({ marketPrice, dividendAmount, growthRate }) {
-  const g = growthRate / 100; // Convert percentage to decimal
-  const d0 = dividendAmount;
-  const d1 = d0 * (1 + g); // Next year's dividend
-  const price = marketPrice;
-  
-  // Required return: r = (D1 / P) + g
-  const requiredReturn = (d1 / price) + g;
-  const requiredReturnPct = requiredReturn * 100;
-  
-  // Generate cash flows for 10 years
-  const cashflows = [];
-  for (let year = 0; year <= 10; year++) {
-    if (year === 0) {
-      // Initial investment (negative cash flow)
-      cashflows.push({
-        year,
-        dividend: 0,
-        investment: -price,
-        total: -price
-      });
-    } else {
-      // Growing dividends
-      const dividend = d0 * Math.pow(1 + g, year);
-      cashflows.push({
-        year,
-        dividend,
-        investment: 0,
-        total: dividend
-      });
-    }
-  }
-  
-  return {
-    requiredReturn: requiredReturnPct,
-    d1,
-    cashflows,
-    isValid: g < requiredReturn // Model only valid when g < r
-  };
+function FormField({ id, label, children, error, helpText, required = false }) {
+  return (
+    <div className="flex flex-col">
+      <label htmlFor={id} className="font-medium text-gray-700 mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-1" aria-label="required">*</span>}
+        {helpText && <span className="text-gray-500 text-xs font-normal ml-2">({helpText})</span>}
+      </label>
+      {children}
+      {error && (
+        <div className="text-red-600 text-xs mt-1" role="alert" id={`${id}-error`}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
 }
 
-// Custom label component that shows values above/below bars
+function ValidationMessage({ errors }) {
+  if (!errors || Object.keys(errors).length === 0) return null;
+  
+  return (
+    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg" role="alert">
+      <h2 className="text-red-800 font-semibold text-sm mb-2">Please correct the following:</h2>
+      <ul className="text-red-800 text-sm space-y-1">
+        {Object.entries(errors).map(([field, error]) => (
+          <li key={field}>• {error}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ResultCard({ title, value, subtitle, description, isValid = true }) {
+  if (!isValid) return null;
+  
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <div className="text-3xl font-serif text-blue-600 mb-2" aria-live="polite">{value}</div>
+      <div className="text-sm text-gray-700">
+        <div><strong>{title}</strong> - {subtitle}</div>
+        <div className="mt-1">{description}</div>
+      </div>
+    </div>
+  );
+}
+
+// Enhanced Custom label component that shows values consistently positioned
 const CustomLabel = (props) => {
   const { x, y, width, height, value } = props;
   
   if (!value || Math.abs(value) < 0.01) return null;
   
   const isNegative = value < 0;
-  const labelY = isNegative ? y + height + 15 : y - 8;
+  // Position all labels above the bar area for consistency
+  const labelY = y - 8;
   
   return (
     <text
@@ -78,34 +86,86 @@ const CustomLabel = (props) => {
       fontSize="11"
       fontWeight="bold"
     >
-      {isNegative ? '-' : ''}${Math.abs(value).toFixed(2)}
+      {isNegative ? '(' : ''}${Math.abs(value).toFixed(2)}{isNegative ? ')' : ''}
     </text>
   );
 };
 
-export default function App() {
+export default function RequiredReturnCalculator() {
   const [inputs, setInputs] = useState({ 
     marketPrice: 54.56, 
-    dividendAmount: 5.00, 
-    growthRate: 6.10 
+    dividendAmount: 5.10, 
+    growthRate: 6.40 
   });
   
-  // Input validation
-  const validateInputs = (inputs) => {
-    const errors = [];
-    if (inputs.marketPrice < 1 || inputs.marketPrice > 500) errors.push("Market Price must be between $1 and $500");
-    if (inputs.dividendAmount < 0 || inputs.dividendAmount > 50) errors.push("Dividend Amount must be between $0 and $50");
-    if (inputs.growthRate < 0 || inputs.growthRate > 25) errors.push("Growth Rate must be between 0% and 25%");
+  const validateInputs = useCallback((inputs) => {
+    const errors = {};
+    if (!inputs.marketPrice || inputs.marketPrice < 1) {
+      errors.marketPrice = "Market price must be at least $1";
+    } else if (inputs.marketPrice > 500) {
+      errors.marketPrice = "Market price cannot exceed $500";
+    }
+    
+    if (inputs.dividendAmount < 0) {
+      errors.dividendAmount = "Dividend cannot be negative";
+    } else if (inputs.dividendAmount > 50) {
+      errors.dividendAmount = "Dividend cannot exceed $50";
+    }
+    
+    if (inputs.growthRate < 0) {
+      errors.growthRate = "Growth rate cannot be negative";
+    } else if (inputs.growthRate > 25) {
+      errors.growthRate = "Growth rate cannot exceed 25%";
+    }
+    
     return errors;
-  };
+  }, []);
+  
+  const handleInputChange = useCallback((field, value) => {
+    setInputs(prev => ({ ...prev, [field]: +value }));
+  }, []);
   
   const inputErrors = validateInputs(inputs);
+  
   const model = useMemo(() => {
-    if (inputErrors.length > 0) return null;
-    return calculateGordonGrowthModel(inputs);
+    if (Object.keys(inputErrors).length > 0) return null;
+    
+    const g = inputs.growthRate / 100;
+    const d0 = inputs.dividendAmount;
+    const d1 = d0 * (1 + g);
+    const price = inputs.marketPrice;
+    
+    const requiredReturn = (d1 / price) + g;
+    const requiredReturnPct = requiredReturn * 100;
+    
+    const cashflows = [];
+    for (let year = 0; year <= 10; year++) {
+      if (year === 0) {
+        cashflows.push({
+          year,
+          dividend: 0,
+          investment: -price,
+          total: -price
+        });
+      } else {
+        const dividend = d0 * Math.pow(1 + g, year);
+        cashflows.push({
+          year,
+          dividend,
+          investment: 0,
+          total: dividend
+        });
+      }
+    }
+    
+    return {
+      requiredReturn: requiredReturnPct,
+      d1,
+      cashflows,
+      isValid: g < requiredReturn && requiredReturnPct > 0
+    };
   }, [inputs, inputErrors]);
 
-  // Chart data for dividend cash flows
   const chartData = useMemo(() => {
     if (!model) return [];
     
@@ -120,119 +180,189 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-6xl mx-auto px-4">
-        {/* Dividend Model Inputs & Chart */}
-        <Card title="Constant Growth Dividend Model: Inputs & Cash Flows" className="w-full">
-          {/* Inputs Section */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <label className="flex flex-col">
-              Market Price of Stock ($) <span className="text-gray-500 text-xs">(1 - 500)</span>
-              <input 
-                type="number" 
-                step="0.01" 
-                min="1"
-                max="500"
-                value={inputs.marketPrice}
-                onChange={(e) => setInputs(v => ({ ...v, marketPrice: +e.target.value }))}
-                className="mt-1 rounded-lg border px-3 py-2" 
-              />
-            </label>
-            <label className="flex flex-col">
-              Dividend Amount ($) <span className="text-gray-500 text-xs">(0 - 50)</span>
-              <input 
-                type="number" 
-                step="0.01" 
-                min="0"
-                max="50"
-                value={inputs.dividendAmount}
-                onChange={(e) => setInputs(v => ({ ...v, dividendAmount: +e.target.value }))}
-                className="mt-1 rounded-lg border px-3 py-2" 
-              />
-            </label>
-            <label className="flex flex-col">
-              Growth Rate (%) <span className="text-gray-500 text-xs">(0 - 25)</span>
-              <input 
-                type="number" 
-                step="0.01" 
-                min="0"
-                max="25"
-                value={inputs.growthRate}
-                onChange={(e) => setInputs(v => ({ ...v, growthRate: +e.target.value }))}
-                className="mt-1 rounded-lg border px-3 py-2" 
-              />
-            </label>
-          </div>
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        <Card title="Required Return Calculator (Gordon Growth Model)">
+          {/* Skip Navigation */}
+          <nav className="mb-4">
+            <a href="#return-inputs" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-3 py-1 rounded">
+              Skip to inputs
+            </a>
+            <a href="#return-results" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-20 bg-blue-600 text-white px-3 py-1 rounded">
+              Skip to results
+            </a>
+            <a href="#return-chart" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-36 bg-blue-600 text-white px-3 py-1 rounded">
+              Skip to chart
+            </a>
+          </nav>
 
-          {/* Error Messages */}
-          {inputErrors.length > 0 && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="text-red-800 text-sm">
-                {inputErrors.map((error, i) => (
-                  <div key={i}>• {error}</div>
-                ))}
-              </div>
+          {/* Inputs */}
+          <section id="return-inputs" aria-labelledby="inputs-heading">
+            <h2 id="inputs-heading" className="sr-only">Stock Parameters</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <FormField 
+                id="stock-price" 
+                label="Market Price per Share" 
+                helpText="$1 - $500"
+                error={inputErrors.marketPrice}
+                required
+              >
+                <input
+                  id="stock-price"
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  max="500"
+                  value={inputs.marketPrice}
+                  onChange={(e) => handleInputChange('marketPrice', e.target.value)}
+                  className="mt-1 rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  aria-describedby={inputErrors.marketPrice ? "stock-price-error" : "stock-price-help"}
+                  aria-invalid={inputErrors.marketPrice ? 'true' : 'false'}
+                />
+                <div id="stock-price-help" className="sr-only">Enter the current market price per share</div>
+              </FormField>
+
+              <FormField 
+                id="current-dividend" 
+                label="Current Annual Dividend" 
+                helpText="$0 - $50"
+                error={inputErrors.dividendAmount}
+                required
+              >
+                <input
+                  id="current-dividend"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="50"
+                  value={inputs.dividendAmount}
+                  onChange={(e) => handleInputChange('dividendAmount', e.target.value)}
+                  className="mt-1 rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  aria-describedby={inputErrors.dividendAmount ? "current-dividend-error" : "current-dividend-help"}
+                  aria-invalid={inputErrors.dividendAmount ? 'true' : 'false'}
+                />
+                <div id="current-dividend-help" className="sr-only">Enter the current annual dividend per share</div>
+              </FormField>
+
+              <FormField 
+                id="dividend-growth" 
+                label="Expected Growth Rate (%)" 
+                helpText="0% - 25%"
+                error={inputErrors.growthRate}
+                required
+              >
+                <input
+                  id="dividend-growth"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="25"
+                  value={inputs.growthRate}
+                  onChange={(e) => handleInputChange('growthRate', e.target.value)}
+                  className="mt-1 rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  aria-describedby={inputErrors.growthRate ? "dividend-growth-error" : "dividend-growth-help"}
+                  aria-invalid={inputErrors.growthRate ? 'true' : 'false'}
+                />
+                <div id="dividend-growth-help" className="sr-only">Enter the expected annual dividend growth rate</div>
+              </FormField>
             </div>
-          )}
+          </section>
 
-          {/* Model Validity Check */}
+          <ValidationMessage errors={inputErrors} />
+
+          {/* Model validity warning */}
           {model && !model.isValid && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg" role="alert">
               <div className="text-yellow-800 text-sm">
                 <strong>Warning:</strong> Growth rate must be less than required return for the model to be valid. 
-                Current: g = {inputs.growthRate.toFixed(2)}%, r = {model.requiredReturn.toFixed(2)}%
+                Current calculation results in: g = {inputs.growthRate.toFixed(2)}%, r = {model.requiredReturn.toFixed(2)}%
               </div>
             </div>
           )}
 
-          {/* Required Return Results */}
+          {/* Results */}
+          <section id="return-results" aria-labelledby="results-heading">
+            <h2 id="results-heading" className="sr-only">Calculation Results</h2>
+            {model && model.isValid && (
+              <ResultCard
+                title="Required Return"
+                value={`${model.requiredReturn.toFixed(2)}%`}
+                subtitle="the return investors demand for this stock"
+                description={`Using Gordon Growth Model: r = (D₁ ÷ P) + g | Next year's dividend (D₁): $${model.d1.toFixed(2)}`}
+                isValid={model.isValid}
+              />
+            )}
+          </section>
+
+          {/* Screen Reader Data Table */}
           {model && model.isValid && (
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <div className="text-3xl font-serif text-blue-600 mb-2">{model.requiredReturn.toFixed(2)}%</div>
-              <div className="text-sm text-gray-700">
-                <div><strong>IRR (Implied Required Return)</strong> - the return investors demand for this stock</div>
-                <div className="mt-1">Using Gordon Growth Model: r = (D₁ ÷ P) + g</div>
-                <div className="text-xs mt-1">Next year's dividend (D₁): ${model.d1.toFixed(2)}</div>
-              </div>
+            <div className="sr-only">
+              <h2>Dividend Cash Flow Data Table</h2>
+              <table>
+                <caption>Dividend cash flow projections showing growing dividend payments over 10 years</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Year</th>
+                    <th scope="col">Investment ($)</th>
+                    <th scope="col">Dividend ($)</th>
+                    <th scope="col">Required Return (%)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartData.map(row => (
+                    <tr key={row.year}>
+                      <th scope="row">{row.yearLabel}</th>
+                      <td className="text-right">{row.investmentFlow ? `(${Math.abs(row.investmentFlow).toFixed(2)})` : '--'}</td>
+                      <td className="text-right">{row.dividendFlow ? `${row.dividendFlow.toFixed(2)}` : '--'}</td>
+                      <td className="text-right">{row.requiredReturnLine.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
-          {/* Chart Legend */}
+          {/* Chart */}
           {model && model.isValid && (
-            <>
-              <div className="mb-4 text-sm text-gray-600 flex items-center gap-6">
+            <section id="return-chart" aria-labelledby="chart-heading">
+              <h2 id="chart-heading" className="sr-only">Visual Chart</h2>
+              
+              <div className="text-center mb-4">
+                <h3 className="font-serif text-lg text-slate-700">Equity Cash Flows (In US$) and Resulting Implied Required Return</h3>
+                <p className="text-sm text-gray-600 mt-1">(Only the first 10 years are shown)</p>
+              </div>
+              
+              <div className="mb-4 text-sm text-gray-600 flex flex-wrap items-center gap-6" role="img" aria-label="Chart legend">
                 <span className="inline-flex items-center">
-                  <span className="w-4 h-4 bg-green-500 mr-2 rounded"></span>
+                  <span className="w-4 h-4 bg-green-500 mr-2 rounded" aria-hidden="true"></span>
                   Dividend Cash Flow
                 </span>
                 <span className="inline-flex items-center">
-                  <span className="w-4 h-4 bg-red-400 mr-2 rounded"></span>
+                  <span className="w-4 h-4 bg-red-400 mr-2 rounded" aria-hidden="true"></span>
                   Initial Investment
                 </span>
                 <span className="inline-flex items-center">
-                  <span className="w-4 h-4 bg-blue-600 mr-2 rounded"></span>
-                  IRR: {model.requiredReturn.toFixed(2)}%
+                  <span className="w-4 h-4 bg-blue-600 mr-2 rounded" aria-hidden="true"></span>
+                  Required Return: {model.requiredReturn.toFixed(2)}%
                 </span>
               </div>
 
-              {/* Cash Flow Chart */}
-              <div className="h-96 relative">
-                <div className="text-center text-sm text-gray-600 mb-2 font-medium">
-                  Equity Cash Flows (in US$) & Resulting Implied Required Return (Only the first 10 years are shown)
+              <div className="h-96" 
+                   role="img" 
+                   aria-labelledby="return-chart-title" 
+                   aria-describedby="return-chart-description">
+                
+                <div className="sr-only">
+                  <h3 id="return-chart-title">Required Return and Dividend Growth Chart</h3>
+                  <p id="return-chart-description">
+                    Bar chart showing initial stock purchase of ${inputs.marketPrice.toFixed(2)} and growing dividend payments starting at ${inputs.dividendAmount.toFixed(2)} growing at {inputs.growthRate.toFixed(2)}% annually over 10 years, 
+                    with calculated required return of {model.requiredReturn.toFixed(2)}%
+                  </p>
                 </div>
-                {/* IRR Value Label positioned relative to chart */}
-                <div 
-                  className="absolute right-6 bg-blue-100 text-blue-600 px-2 py-1 rounded text-sm font-semibold z-10"
-                  style={{
-                    top: `${100 - (model.requiredReturn / (Math.ceil(model.requiredReturn * 1.2))) * 80}%`,
-                    transform: 'translateY(-50%)'
-                  }}
-                >
-                  {model.requiredReturn.toFixed(2)}%
-                </div>
+
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={chartData}
-                    margin={{ top: 20, right: 100, left: 20, bottom: 20 }}
+                    margin={{ top: 30, right: 100, left: 20, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
@@ -247,28 +377,25 @@ export default function App() {
                     <YAxis 
                       yAxisId="right"
                       orientation="right"
-                      label={{ value: 'IRR (%)', angle: 90, position: 'insideRight', style: { fill: '#2563eb' } }}
-                      tickFormatter={(value) => `${value.toFixed(1)}`}
+                      label={{ value: 'Required Return (%)', angle: 90, position: 'insideRight' }}
+                      tickFormatter={(value) => `${value.toFixed(1)}%`}
                       domain={[0, Math.ceil(model.requiredReturn * 1.2)]}
-                      tick={{ fill: '#2563eb' }}
-                      axisLine={{ stroke: '#2563eb' }}
                     />
                     <Tooltip 
                       formatter={(value, name) => {
-                        if (name === 'Implied Required Return') return [`${Number(value).toFixed(2)}%`, name];
-                        return [`${Number(value).toFixed(2)}`, name];
+                        if (name === 'Required Return') return [`${Number(value).toFixed(2)}%`, name];
+                        return [`$${Number(value).toFixed(2)}`, name];
                       }}
                       labelFormatter={(label) => `Year: ${label}`}
                     />
                     
-                    {/* Stacked bars for cash flows */}
                     <Bar 
                       yAxisId="left" 
                       dataKey="dividendFlow" 
                       stackId="cash" 
                       fill="#10b981" 
                       name="Dividend Cash Flow"
-                      label={CustomLabel}
+                      label={<CustomLabel />}
                     />
                     <Bar 
                       yAxisId="left" 
@@ -276,10 +403,9 @@ export default function App() {
                       stackId="cash" 
                       fill="#f87171" 
                       name="Initial Investment"
-                      label={CustomLabel}
+                      label={<CustomLabel />}
                     />
                     
-                    {/* Required Return line */}
                     <Line 
                       yAxisId="right" 
                       type="monotone" 
@@ -287,20 +413,30 @@ export default function App() {
                       stroke="#2563eb" 
                       strokeWidth={3}
                       dot={false}
-                      name="IRR"
+                      name="Required Return"
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Educational Note */}
               <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
-                <strong>Gordon Growth Model:</strong> Assumes dividends grow at a constant rate forever. 
-                The model calculates the required return that makes the present value of all future dividends 
-                equal to the current stock price. Only valid when growth rate &lt; required return.
+                <strong>Gordon Growth Model (Required Return):</strong> Calculates the minimum return investors 
+                require given the current stock price and expected dividend growth. The model assumes dividends 
+                grow at a constant rate forever and that growth rate is less than the required return.
               </div>
-            </>
+            </section>
           )}
+
+          {/* Educational Context */}
+          <section className="mt-8 p-4 bg-blue-50 rounded-lg" aria-labelledby="education-heading">
+            <h2 id="education-heading" className="font-semibold text-blue-800 mb-2">Educational Context</h2>
+            <div className="text-sm text-blue-700 space-y-2">
+              <p><strong>Required Return:</strong> The minimum return investors demand to compensate for the risk of holding a particular stock.</p>
+              <p><strong>Gordon Growth Model Formula:</strong> r = (D₁ ÷ P₀) + g, where r is required return, D₁ is next year's expected dividend, P₀ is current price, and g is growth rate.</p>
+              <p><strong>Key Assumptions:</strong> Dividends grow at a constant rate indefinitely, growth rate is less than the required return, and the stock is held forever.</p>
+              <p className="text-xs mt-2"><strong>Limitations:</strong> Model works best for mature companies with stable dividend policies. May not be suitable for growth stocks or companies with irregular dividends.</p>
+            </div>
+          </section>
         </Card>
       </main>
     </div>
