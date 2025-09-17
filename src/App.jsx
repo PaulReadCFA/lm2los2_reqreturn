@@ -432,8 +432,8 @@ export default function RequiredReturnCalculator() {
             <h2 id="education-heading" className="font-semibold text-blue-800 mb-2">Educational Context</h2>
             <div className="text-sm text-blue-700 space-y-2">
               <p><strong>Required Return:</strong> The minimum return investors demand to compensate for the risk of holding a particular stock.</p>
-              <p><strong>Gordon Growth Model Formula:</strong> r = (D₁ ÷ P₀) + g, where r is required return, D₁ is next year's expected dividend, P₀ is current price, and g is growth rate.</p>
-              <p><strong>Key Assumptions:</strong> Dividends grow at a constant rate indefinitely, growth rate is less than the required return, and the stock is held forever.</p>
+              <p><strong>Gordon Growth Model Formula:</strong> r = (D₁ ÷ P₀) + g, where r is required return, D₁ is next year's expected dividend, P₀ is current price, and g is dividend growth rate.</p>
+              <p><strong>Key Assumptions:</strong> The model assumes constant dividend growth at rate g indefinitely, dividend growth rate is less than the required return, and the stock is held forever.</p>
               <p className="text-xs mt-2"><strong>Limitations:</strong> Model works best for mature companies with stable dividend policies. May not be suitable for growth stocks or companies with irregular dividends.</p>
             </div>
           </section>
